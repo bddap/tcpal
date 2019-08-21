@@ -1534,7 +1534,6 @@ name = "tcpal"
 version = "0.1.0"
 dependencies = [
  "cpal 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "piston_window 0.96.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "plotters 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustfft 3.0.0 (registry+https://github.com/rust-lang/crates.io-index)",

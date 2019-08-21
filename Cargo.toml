@@ -3,9 +3,9 @@ authors = ["Andrew Dirksen <andrew@dirksen.com>"]
 edition = "2018"
 name = "tcpal"
 version = "0.1.0"
+
 [dependencies]
 cpal = "*"
-lazy_static = "*"
 plotters = { version = "0.2", features = ["piston"] }
 rustfft = "3.0.0"
 piston_window = "*"
