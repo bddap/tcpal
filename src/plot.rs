@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 const MAX_FPS: u64 = 30;
 
 pub fn plot(input: Arc<Mutex<Vec<f32>>>) {
-    let mut window: PistonWindow = WindowSettings::new("Realtime CPU Usage", [450, 300])
+    let mut window: PistonWindow = WindowSettings::new("Audio Spectrum", [450, 300])
         .samples(4)
         .build()
         .unwrap();

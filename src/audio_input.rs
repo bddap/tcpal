@@ -1,12 +1,11 @@
-//! Keeps MICSOUND populated with TARGET_SAMPLES most recent audio samples
+//! Keeps a sample buffer populated with TARGET_SECONDS worth of the most recent samples.
 
 use cpal::traits::{DeviceTrait as _, EventLoopTrait, HostTrait as _};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
-const TARGET_SAMPLES: usize = 512 * 32 * 4;
-// const TARGET_MICROSECONDS: usize = 512 * 32;
+pub const TARGET_SECONDS: f32 = 0.1;
 
 /// Start microphone input thread.
 pub fn start_sound_thread(output: Arc<Mutex<Vec<f32>>>) {
@@ -14,17 +13,16 @@ pub fn start_sound_thread(output: Arc<Mutex<Vec<f32>>>) {
 }
 
 fn sound_thread(output: Arc<Mutex<Vec<f32>>>) {
-    output
-        .lock()
-        .unwrap()
-        .resize(TARGET_SAMPLES, Default::default());
-
     let host = cpal::default_host();
     let event_loop = host.event_loop();
 
     let mic = host.default_input_device().unwrap();
     let format = mic.default_input_format().unwrap();
     dbg!(&format);
+    output.lock().unwrap().resize(
+        num_samples_to_save(TARGET_SECONDS, &format),
+        Default::default(),
+    );
     let mic_stream_id = event_loop.build_input_stream(&mic, &format).unwrap();
     event_loop.play_stream(mic_stream_id.clone()).unwrap();
 
@@ -32,25 +30,42 @@ fn sound_thread(output: Arc<Mutex<Vec<f32>>>) {
         Err(e) => eprintln!("{}", e),
         Ok(data) => match data {
             cpal::StreamData::Input { buffer } => {
-                on_audio_input(buffer, &mut output.lock().unwrap());
+                on_audio_input(&format, buffer, &mut output.lock().unwrap());
             }
             cpal::StreamData::Output { .. } => panic!(),
         },
     });
 }
 
-fn on_audio_input(buf: cpal::UnknownTypeInputBuffer, output: &mut Vec<f32>) {
+/// # Panics
+///
+/// Panics if num_channels is 0
+fn on_audio_input(
+    input_format: &cpal::Format,
+    buf: cpal::UnknownTypeInputBuffer,
+    output: &mut Vec<f32>,
+) {
+    assert_ne!(input_format.channels, 0);
+
+    debug_assert_eq!(input_format.sample_rate.0 as usize, buf.len());
+
+    let target_samples = num_samples_to_save(TARGET_SECONDS, input_format);
+
     // read all sound into vec
     let mut got: Vec<f32> = vec![0.0; buf.len()];
     buf.write_as_f32(&mut got);
 
     // post new sound to micsound
-    output.extend_from_slice(&got);
-    // trim micsound to not be longer than TARGET_SAMPLES
-    if output.len() > TARGET_SAMPLES {
+    for sample in got.iter().step_by(input_format.channels as usize) {
+        // must step by number of channels because cpal implicitly intersperses audio samples from
+        // multiple channels
+        output.push(*sample);
+    }
+    // trim micsound to not be longer than target_samples
+    if output.len() > target_samples {
         let len = output.len();
-        drop(output.drain(..(len - TARGET_SAMPLES)));
-        debug_assert_eq!(output.len(), TARGET_SAMPLES);
+        drop(output.drain(..(len - target_samples)));
+        debug_assert_eq!(output.len(), target_samples);
     }
 }
 
@@ -112,5 +127,37 @@ impl Samples for cpal::UnknownTypeInputBuffer<'_> {
                 out.copy_from_slice(&buffer);
             }
         }
+    }
+}
+
+fn num_samples_to_save(target_seconds: f32, format: &cpal::Format) -> usize {
+    let sample_rate_per_channel = format.sample_rate.0 as usize / format.channels as usize;
+    (target_seconds * (sample_rate_per_channel as f32)).round() as usize
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn samples_a() {
+        let format = cpal::Format {
+            channels: 1,
+            sample_rate: cpal::SampleRate(16000),
+            data_type: cpal::SampleFormat::F32,
+        };
+        assert_eq!(num_samples_to_save(0.1, &format), 1600);
+        assert_eq!(num_samples_to_save(1.0, &format), 16000);
+    }
+
+    #[test]
+    fn samples_b() {
+        let format = cpal::Format {
+            channels: 2,
+            sample_rate: cpal::SampleRate(44100),
+            data_type: cpal::SampleFormat::F32,
+        };
+        assert_eq!(num_samples_to_save(0.1, &format), 2205);
+        assert_eq!(num_samples_to_save(1.0, &format), 22050);
     }
 }
